@@ -1,0 +1,154 @@
+#THƯ VIỆN
+from keras.models import Sequential, load_model
+from keras.layers import Dense, Activation, Conv2D, Dropout, BatchNormalization, MaxPooling2D, Flatten, LeakyReLU, Convolution2D, MaxPool2D
+from tensorflow.keras.optimizers import Adam
+from sklearn.preprocessing import StandardScaler
+from keras.utils import np_utils
+from sklearn.utils import shuffle
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import glob
+import pickle
+import tensorflow as tf
+import pandas as pd
+import random
+from sklearn.model_selection import train_test_split
+from google.colab import drive
+drive.mount('/content/drive', force_remount = True)
+
+
+#ĐỌC DỮ LIỆU
+def plot_history(history_fine):
+  f1 = history_fine.history['acc']
+  val_f1 = history_fine.history['val_acc']
+  loss = history_fine.history['loss']
+  val_loss = history_fine.history['val_loss']
+  plt.figure(figsize=(8, 8))
+  plt.subplot(2, 1, 1)
+  plt.plot(f1, label='Acc')
+  plt.plot(val_f1, label='Validation Acc')
+  plt.legend(loc='lower right')
+  plt.title('Accuracy')
+  plt.subplot(2, 1, 2)
+  plt.plot(loss, label='Loss')
+  plt.plot(val_loss, label='Validation Loss')
+  plt.legend(loc='upper right')
+  plt.title('Loss')
+  plt.xlabel('epoch')
+  plt.show()
+  
+  
+X_DATA_PATH = '/content/drive/MyDrive/AI_CuoiKy/data.pickle'
+Y_DATA_PATH = '/content/drive/MyDrive/AI_CuoiKy/train.csv'
+y_data = pd.read_csv(Y_DATA_PATH)
+y_data.head(None)
+
+
+x_data = pickle.load(open(X_DATA_PATH, 'rb'))
+x_data = np.array(x_data, dtype = 'float')
+x_data /= 255
+print('Shape of x data: ', x_data.shape)
+
+
+n = x_data.shape[0]
+plt.figure(figsize = (15, 15))
+plt.subplots_adjust(hspace = .2)
+for i in range(6):
+    plt.subplot(3, 2, i + 1)
+    k = random.randint(0, 599)
+    img = x_data[k]
+    points = list(y_data.iloc[k])
+    points = [tuple(points[i : i + 2]) for i in range(0, len(points), 2)]
+    for x, y in points:
+        cv2.circle(img, (int(x), int(y)), 2, (0, 0, 0), 2)
+    plt.imshow(img)
+_ = plt.suptitle('Sample images', size = 20)
+
+
+input_shape = x_data.shape[1:4]
+y_data = np.array(y_data, dtype = 'float')
+num_class = y_data.shape[1]
+x_train, x_test, y_train, y_test = train_test_split(x_data, y_data, test_size = 0.1)
+print('Input shape: ', input_shape)
+print('Number of output: ', num_class)
+print('x train shape: ', x_train.shape)
+print('y train shape: ', y_train.shape)
+print('x test shape: ', x_test.shape)
+print('y test shape: ', y_test.shape)
+
+
+#XÂY DỰNG MÔ HÌNH
+model = Sequential()
+model.add(Convolution2D(32, (3,3), padding='same', use_bias=False, input_shape = input_shape))
+model.add(LeakyReLU(alpha = 0.1))
+model.add(BatchNormalization())
+model.add(Convolution2D(32, (3,3), padding='same', use_bias=False))
+model.add(LeakyReLU(alpha = 0.1))
+model.add(BatchNormalization())
+model.add(MaxPool2D(pool_size=(2, 2)))
+model.add(Convolution2D(64, (3,3), padding='same', use_bias=False))
+model.add(LeakyReLU(alpha = 0.1))
+model.add(BatchNormalization())
+model.add(Convolution2D(64, (3,3), padding='same', use_bias=False))
+model.add(LeakyReLU(alpha = 0.1))
+model.add(BatchNormalization())
+model.add(MaxPool2D(pool_size=(2, 2)))
+model.add(Flatten())
+model.add(Dense(512, activation = 'relu'))
+model.add(Dense(num_class))
+model.summary()
+
+
+#TRAINING
+from tensorflow.keras.optimizers import Adam, SGD, RMSprop
+model.compile(
+    optimizer = 'Adam',
+    loss = "mean_squared_error",
+    metrics = ['mae']
+)
+from tensorflow.keras.callbacks import EarlyStopping
+callback = EarlyStopping(monitor = 'val_mae', patience = 25)
+hist = model.fit(x_train, y_train, epochs = 1000, batch_size = 16, validation_split = 0.1).history
+
+
+#ĐỘ CHÍNH XÁC, SAI SỐ
+final_loss, final_accuracy = model.evaluate(x_test, y_test)
+print('Final loss: {:.2f}'.format(final_loss))
+print('Final accuracy: {:.2f}'.format(final_accuracy))
+
+
+#ĐỒ THỊ
+model_history = pd.DataFrame(hist)
+# add epoch column
+model_history['epoch'] = np.arange(1, len(model_history) + 1)
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize = (8, 10))
+epochs = model_history.shape[0]
+ax1.plot(np.arange(0, epochs), model_history['mae'], label = 'Training accuracy')
+ax1.plot(np.arange(0, epochs), model_history['val_mae'], label = 'Validation accuracy')
+ax1.legend(loc = 'lower right')
+ax1.set_ylabel('Accuracy')
+ax1.set_xlabel('Epoch')
+ax2.plot(np.arange(0, epochs), model_history['loss'], label = 'Training loss')
+ax2.plot(np.arange(0, epochs), model_history['val_loss'], label = 'Validation loss')
+ax2.legend(loc = 'upper right')
+ax2.set_ylabel('Loss')
+ax2.set_xlabel('Epoch')
+plt.tight_layout()
+plt.show()
+
+
+#TEST
+pred = model.predict(x_test)
+n = x_test.shape[0]
+plt.figure(figsize = (15, 15))
+plt.subplots_adjust(hspace = .2)
+k = random.randint(0, 39)
+print(k)
+img = x_test[k].reshape(300,300,3)
+points = pred[k,:]
+print(points)
+for j in range(20):
+  cv2.circle(img, (int(points[j*2]), int(points[j*2+1])), 1, (255, 0, 0), 3)
+plt.imshow(img)  
+_ = plt.suptitle('Sample images', size = 20)
